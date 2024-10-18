@@ -8,6 +8,112 @@ from transform import tabulate_playlist, tabulate_reccs
 from vars import TARGET_PLAYLIST_URI, FILTER_DEFAULTS, N_FILTER_COLUMNS
 
 
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+
+def get_token(oauth, code):
+
+    token = oauth.get_access_token(code, as_dict=False, check_cache=False)
+    # remove cached token saved in directory
+    os.remove(".cache")
+    
+    # return the token
+    return token
+
+
+def sign_in(token):
+    sp = spotipy.Spotify(auth=token)
+    return sp
+
+
+def app_get_token():
+    try:
+        token = get_token(st.session_state["oauth"], st.session_state["code"])
+    except Exception as e:
+        st.error("An error occurred during token retrieval!")
+        st.write("The error is as follows:")
+        st.write(e)
+    else:
+        st.session_state["cached_token"] = token
+
+
+
+def app_sign_in():
+    try:
+        sp = sign_in(st.session_state["cached_token"])
+    except Exception as e:
+        st.error("An error occurred during sign-in!")
+        st.write("The error is as follows:")
+        st.write(e)
+    else:
+        st.session_state["signed_in"] = True
+        app_display_welcome()
+        st.success("Sign in success!")
+        
+    return sp
+
+
+def app_display_welcome():
+    
+    # import secrets from streamlit deployment
+    spotify_client_id = os.getenv("SPOTIPY_CLIENT_ID") or st.secrets["SPOTIPY_CLIENT_ID"]
+    spotify_secret = os.getenv("SPOTIPY_CLIENT_SECRET") or st.secrets["SPOTIPY_CLIENT_SECRET"]
+    spotipy_redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI") or st.secrets["SPOTIPY_REDIRECT_URI"]
+
+
+    # set scope and establish connection
+    scopes='user-read-playback-state,user-modify-playback-state,playlist-modify-private,playlist-modify-public'
+
+
+    # create oauth object
+    oauth = SpotifyOAuth(scope=scopes,
+                         redirect_uri=spotipy_redirect_uri,
+                         client_id=spotify_client_id,
+                         client_secret=spotify_secret)
+    
+    # store oauth in session
+    st.session_state["oauth"] = oauth
+
+    # retrieve auth url
+    auth_url = oauth.get_authorize_url()
+    
+    # this SHOULD open the link in the same tab when Streamlit Cloud is updated
+    # via the "_self" target
+    link_html = " <a target=\"_self\" href=\"{url}\" >{msg}</a> ".format(
+        url=auth_url,
+        msg="Click me to authenticate!"
+    )
+    
+    # define welcome
+    welcome_msg = """
+    Welcome! :wave: This app uses the Spotify API to interact with general 
+    music info and your playlists! In order to view and modify information 
+    associated with your account, you must log in. You only need to do this 
+    once.
+    """
+    
+    # define temporary note
+    note_temp = """
+    _Note: Unfortunately, the current version of Streamlit will not allow for
+    staying on the same page, so the authorization and redirection will open in a 
+    new tab. This has already been addressed in a development release, so it should
+    be implemented in Streamlit Cloud soon!_
+    """
+
+    st.title("Spotify Playlist Preserver")
+
+    if not st.session_state["signed_in"]:
+        st.markdown(welcome_msg)
+        st.write(" ".join(["No tokens found for this session. Please log in by",
+                          "clicking the link below."]))
+        st.markdown(link_html, unsafe_allow_html=True)
+        st.markdown(note_temp)
+
+        st.session_state["code"] = st.text_input(label="Code")
+        st.session_state["cached_token"] = get_token(st.session_state["oauth"], st.session_state["code"])
+        st.session_state["signed_in"] = True
+
+
 # Initialization
 def initialise():
     if 'spotify' not in st.session_state:
@@ -16,6 +122,35 @@ def initialise():
         spotify_client_id = os.getenv("SPOTIPY_CLIENT_ID") or st.secrets["SPOTIPY_CLIENT_ID"]
         spotify_secret = os.getenv("SPOTIPY_CLIENT_SECRET") or st.secrets["SPOTIPY_CLIENT_SECRET"]
         spotipy_redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI") or st.secrets["SPOTIPY_REDIRECT_URI"]
+
+
+        if "signed_in" not in st.session_state:
+            st.session_state["signed_in"] = False
+        if "cached_token" not in st.session_state:
+            st.session_state["cached_token"] = ""
+        if "code" not in st.session_state:
+            st.session_state["code"] = ""
+        if "oauth" not in st.session_state:
+            st.session_state["oauth"] = None
+
+        # %% authenticate with response stored in url
+
+        # get current url (stored as dict)
+        url_params = st.query_params
+
+        # attempt sign in with cached token
+        if st.session_state["cached_token"] != "":
+            sp = app_sign_in()
+        # if no token, but code in url, get code, parse token, and sign in
+        elif "code" in url_params:
+            # all params stored as lists, see doc for explanation
+            st.session_state["code"] = url_params["code"][0]
+            app_get_token()
+            sp = app_sign_in()
+        # otherwise, prompt for redirect
+        else:
+            app_display_welcome()
+
 
         st.session_state.spotify = SpotifyInterface(st.session_state.spotify_username, spotify_client_id, spotify_secret, spotipy_redirect_uri)
         st.session_state.playlist_id = None
@@ -147,7 +282,8 @@ class RecommendationsPanel:
 
 class SpotifyInterface:
     def __init__(self, username, client_id, client_secret, redirect_uri):
-        self.client = get_authorised_spotify(username, client_id, client_secret, redirect_uri)
+        self.client = sign_in(st.session_state["cached_token"])
+        # self.client = get_authorised_spotify(username, client_id, client_secret, redirect_uri)
     
     def play_track(self, track_id):
         try:
