@@ -1,6 +1,5 @@
 from collections import OrderedDict
 
-REDIRECT_URI = 'https://www.theguardian.com/uk'
 TARGET_PLAYLIST_URI = '6PMDU7e878EQuN4AA4GOag'
 N_FILTER_COLUMNS = 4
 
