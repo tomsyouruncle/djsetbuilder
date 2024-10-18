@@ -5,18 +5,19 @@ from dotenv import load_dotenv
 
 from auth import get_authorised_spotify
 from transform import tabulate_playlist, tabulate_reccs
-from vars import REDIRECT_URI, TARGET_PLAYLIST_URI, FILTER_DEFAULTS, N_FILTER_COLUMNS
+from vars import TARGET_PLAYLIST_URI, FILTER_DEFAULTS, N_FILTER_COLUMNS
 
 
 # Initialization
 def initialise():
     if 'spotify' not in st.session_state:
         load_dotenv("spotify.env")
-        st.session_state.spotify_username = os.getenv("USERNAME")
-        spotify_client_id = os.getenv("CLIENT_ID")
-        spotify_secret = os.getenv("CLIENT_SECRET")
+        st.session_state.spotify_username = os.getenv("SPOTIPY_USERNAME")
+        spotify_client_id = os.getenv("SPOTIPY_CLIENT_ID") or st.secrets["SPOTIPY_CLIENT_ID"]
+        spotify_secret = os.getenv("SPOTIPY_CLIENT_SECRET") or st.secrets["SPOTIPY_CLIENT_SECRET"]
+        spotipy_redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI") or st.secrets["SPOTIPY_REDIRECT_URI"]
 
-        st.session_state.spotify = SpotifyInterface(st.session_state.spotify_username, spotify_client_id, spotify_secret)
+        st.session_state.spotify = SpotifyInterface(st.session_state.spotify_username, spotify_client_id, spotify_secret, spotipy_redirect_uri)
         st.session_state.playlist_id = None
         st.session_state.recommendations = pd.DataFrame()
         st.session_state.filter_settings = FILTER_DEFAULTS        
@@ -145,8 +146,8 @@ class RecommendationsPanel:
 
 
 class SpotifyInterface:
-    def __init__(self, username, client_id, client_secret):
-        self.client = get_authorised_spotify(username, client_id, client_secret, REDIRECT_URI)
+    def __init__(self, username, client_id, client_secret, redirect_uri):
+        self.client = get_authorised_spotify(username, client_id, client_secret, redirect_uri)
     
     def play_track(self, track_id):
         try:
