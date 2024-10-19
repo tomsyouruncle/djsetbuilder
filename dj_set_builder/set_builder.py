@@ -137,7 +137,7 @@ def initialise():
             app_display_welcome()
 
 
-        st.session_state.spotify = SpotifyInterface(st.session_state.spotify_username, spotify_client_id, spotify_secret, spotipy_redirect_uri)
+        st.session_state.spotify = SpotifyInterface()
         st.session_state.playlist_id = None
         st.session_state.recommendations = pd.DataFrame()
         st.session_state.filter_settings = FILTER_DEFAULTS        
@@ -146,10 +146,13 @@ def initialise():
 
 class PlaylistSelectorPanel:
     def display():
+        current_username = st.session_state.spotify_username
+        new_username = st.text_input(label="Spotify username", value=current_username)
         current_playlist_id = st.session_state.playlist_id
         new_playlist_id = st.text_input(label="Playlist ID", value=TARGET_PLAYLIST_URI)
-        if new_playlist_id != current_playlist_id:
+        if (new_playlist_id != current_playlist_id) or (new_username != current_username):
             st.session_state.playlist_id = new_playlist_id
+            st.session_state.spotify_username = new_username
             st.session_state.spotify.fetch_playlist()
         st.write("------")
 
@@ -266,7 +269,7 @@ class RecommendationsPanel:
 
 
 class SpotifyInterface:
-    def __init__(self, username, client_id, client_secret, redirect_uri):
+    def __init__(self):
         self.client = sign_in(st.session_state["cached_token"])
         # self.client = get_authorised_spotify(username, client_id, client_secret, redirect_uri)
     
@@ -297,6 +300,7 @@ class SpotifyInterface:
                 )
             )
         except:
+            st.write("Failed to get playlist. Check username and ID.")
             st.session_state.playlist = pd.DataFrame()
 
     def add_track_to_playlist(self):
